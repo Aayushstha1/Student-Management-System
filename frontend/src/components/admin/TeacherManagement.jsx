@@ -1,0 +1,820 @@
+import React, { useState } from 'react';
+import {
+  Box,
+  Typography,
+  Paper,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Grid,
+  Alert,
+  CircularProgress,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Chip,
+  IconButton,
+  Tooltip,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
+} from '@mui/material';
+import {
+  Person as PersonIcon,
+  Add as AddIcon,
+  QrCode as QRCodeIcon,
+  Search as SearchIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon
+} from '@mui/icons-material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import axios from 'axios';
+
+const TeacherManagement = () => {
+  const [openDialog, setOpenDialog] = useState(false);
+  const [openEditDialog, setOpenEditDialog] = useState(false);
+  const [openQRDialog, setOpenQRDialog] = useState(false);
+  const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
+  const [selectedTeacher, setSelectedTeacher] = useState(null);
+  const [qrData, setQrData] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [formData, setFormData] = useState({
+    username: '',
+    email: '',
+    password: '',
+    password_confirm: '',
+    first_name: '',
+    last_name: '',
+    phone: '',
+    joining_date: '',
+    qualification: '',
+    department: '',
+    designation: 'Teacher',
+    experience_years: 0,
+    salary: '',
+    emergency_contact: '',
+    emergency_contact_name: ''
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const queryClient = useQueryClient();
+
+  const { data: teachers, isLoading } = useQuery({
+    queryKey: ['teachers'],
+    queryFn: async () => {
+      const response = await axios.get('/teachers/');
+      return response.data;
+    },
+  });
+
+  const createTeacherMutation = useMutation({
+    mutationFn: async (teacherData) => {
+      const response = await axios.post('/teachers/', teacherData);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['teachers']);
+      setOpenDialog(false);
+      setFormData({
+        username: '',
+        email: '',
+        password: '',
+        password_confirm: '',
+        first_name: '',
+        last_name: '',
+        phone: '',
+        joining_date: '',
+        qualification: '',
+        department: '',
+        designation: 'Teacher',
+        experience_years: 0,
+        salary: '',
+        emergency_contact: '',
+        emergency_contact_name: ''
+      });
+    },
+    onError: (error) => {
+      // Handle validation errors from Django REST Framework
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        if (typeof errorData === 'string') {
+          setError(errorData);
+        } else if (errorData.message) {
+          setError(errorData.message);
+        } else if (errorData.detail) {
+          setError(errorData.detail);
+        } else {
+          // Format field-specific errors
+          const errorMessages = Object.entries(errorData)
+            .map(([field, messages]) => {
+              const fieldName = field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+              const messageList = Array.isArray(messages) ? messages.join(', ') : messages;
+              return `${fieldName}: ${messageList}`;
+            })
+            .join('\n');
+          setError(errorMessages || 'Failed to create teacher. Please check all required fields.');
+        }
+      } else {
+        setError('Failed to create teacher. Please try again.');
+      }
+    }
+  });
+
+  const updateTeacherMutation = useMutation({
+    mutationFn: async ({ id, updates }) => {
+      const payload = { ...updates };
+      Object.keys(payload).forEach((k) => {
+        if (payload[k] === '') delete payload[k];
+      });
+      const res = await axios.put(`/teachers/${id}/`, payload);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['teachers']);
+      setOpenEditDialog(false);
+      setSelectedTeacher(null);
+    },
+    onError: (error) => {
+      setError(error.response?.data?.message || 'Failed to update teacher');
+    }
+  });
+
+  const deleteTeacherMutation = useMutation({
+    mutationFn: async (id) => {
+      await axios.delete(`/teachers/${id}/`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['teachers']);
+      setOpenDeleteDialog(false);
+      setSelectedTeacher(null);
+    },
+    onError: (error) => {
+      setError(error.response?.data?.message || 'Failed to delete teacher');
+    }
+  });
+
+  const handleOpenDialog = () => {
+    setOpenDialog(true);
+    setError('');
+  };
+
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+    setError('');
+    setFormData({
+      username: '',
+      email: '',
+      password: '',
+      password_confirm: '',
+      first_name: '',
+      last_name: '',
+      phone: '',
+      joining_date: '',
+      qualification: '',
+      department: '',
+      designation: 'Teacher',
+      experience_years: 0,
+      salary: '',
+      emergency_contact: '',
+      emergency_contact_name: ''
+    });
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value, type } = e.target;
+    
+    // Handle number inputs
+    let processedValue = value;
+    if (type === 'number') {
+      // For number inputs, convert empty string to 0 for experience_years, or empty string for salary
+      if (name === 'experience_years') {
+        processedValue = value === '' ? 0 : parseInt(value) || 0;
+      } else if (name === 'salary') {
+        processedValue = value === '' ? '' : value; // Keep as string, will be converted on submit
+      }
+    }
+    
+    setFormData({
+      ...formData,
+      [name]: processedValue
+    });
+    setError('');
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    
+    // Validate password confirmation
+    if (formData.password !== formData.password_confirm) {
+      setError('Passwords do not match');
+      return;
+    }
+    
+    // Remove password_confirm before sending (not needed by backend)
+    const { password_confirm, ...teacherData } = formData;
+    
+    // Clean up the data: convert empty strings to null for optional fields
+    // and ensure proper data types
+    const cleanedData = { ...teacherData };
+    
+    // Convert empty strings to null for optional fields
+    if (cleanedData.phone === '') cleanedData.phone = null;
+    if (cleanedData.salary === '') cleanedData.salary = null;
+    if (cleanedData.emergency_contact === '') cleanedData.emergency_contact = null;
+    if (cleanedData.emergency_contact_name === '') cleanedData.emergency_contact_name = null;
+    
+    // Ensure experience_years is an integer
+    cleanedData.experience_years = parseInt(cleanedData.experience_years) || 0;
+    
+    // Convert salary to number if it's not null
+    if (cleanedData.salary !== null && cleanedData.salary !== '') {
+      cleanedData.salary = parseFloat(cleanedData.salary);
+    }
+    
+    setLoading(true);
+    createTeacherMutation.mutate(cleanedData, {
+      onSettled: () => {
+        setLoading(false);
+      }
+    });
+  };
+
+  const teachersArray = Array.isArray(teachers) ? teachers : (teachers?.results || []);
+  const filteredTeachers = teachersArray.filter(teacher => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      teacher.employee_id?.toLowerCase().includes(query) ||
+      teacher.user_details?.first_name?.toLowerCase().includes(query) ||
+      teacher.user_details?.last_name?.toLowerCase().includes(query) ||
+      teacher.department?.toLowerCase().includes(query) ||
+      teacher.designation?.toLowerCase().includes(query)
+    );
+  });
+
+  const departments = [
+    'Mathematics', 'Science', 'English', 'Social Studies', 
+    'Physical Education', 'Computer Science', 'Arts', 'Music', 'Other'
+  ];
+
+  const qualifications = [
+    'B.A', 'B.Sc', 'B.Ed', 'M.A', 'M.Sc', 'M.Ed', 'Ph.D', 'Other'
+  ];
+
+  if (isLoading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  return (
+    <Box>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Box display="flex" alignItems="center">
+          <PersonIcon sx={{ fontSize: 32, mr: 2, color: 'primary.main' }} />
+          <Typography variant="h4">
+            Teacher Management
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={handleOpenDialog}
+        >
+          Add New Teacher
+        </Button>
+      </Box>
+
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Box display="flex" alignItems="center" gap={2}>
+          <TextField
+            placeholder="Search teachers..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />
+            }}
+            sx={{ flexGrow: 1 }}
+          />
+        </Box>
+      </Paper>
+
+      <Paper sx={{ p: 2 }}>
+        <Typography variant="h6" gutterBottom>
+          Teachers ({filteredTeachers.length})
+        </Typography>
+        
+        {filteredTeachers.length === 0 ? (
+          <Typography color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+            {searchQuery ? 'No teachers found matching your search.' : 'No teachers found. Add your first teacher!'}
+          </Typography>
+        ) : (
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Employee ID</TableCell>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Department</TableCell>
+                  <TableCell>Designation</TableCell>
+                  <TableCell>Qualification</TableCell>
+                  <TableCell>Experience</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredTeachers.map((teacher) => (
+                  <TableRow key={teacher.id}>
+                    <TableCell>{teacher.employee_id}</TableCell>
+                    <TableCell>
+                      {teacher.user_details?.first_name} {teacher.user_details?.last_name}
+                    </TableCell>
+                    <TableCell>{teacher.department}</TableCell>
+                    <TableCell>{teacher.designation}</TableCell>
+                    <TableCell>{teacher.qualification}</TableCell>
+                    <TableCell>{teacher.experience_years} years</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={teacher.is_active ? 'Active' : 'Inactive'}
+                        color={teacher.is_active ? 'success' : 'default'}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Tooltip title="View QR Code">
+                        <IconButton size="small" onClick={async () => {
+                          setSelectedTeacher(teacher);
+                          setError('');
+                          try {
+                            const resp = await axios.get(`/teachers/${teacher.id}/qr-code/`);
+                            setQrData(resp.data);
+                          } catch (e) {
+                            setQrData(null);
+                          }
+                          setOpenQRDialog(true);
+                        }}>
+                          <QRCodeIcon />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Edit">
+                        <IconButton size="small" onClick={() => {
+                          setSelectedTeacher(teacher);
+                          setFormData({
+                            ...formData,
+                            username: teacher.user_details?.username || '',
+                            password: '',
+                            password_confirm: '',
+                            phone: teacher.user_details?.phone || '',
+                            joining_date: teacher.joining_date || '',
+                            qualification: teacher.qualification || '',
+                            department: teacher.department || '',
+                            designation: teacher.designation || 'Teacher',
+                            experience_years: teacher.experience_years ?? 0,
+                            salary: teacher.salary || '',
+                            emergency_contact: teacher.emergency_contact || '',
+                            emergency_contact_name: teacher.emergency_contact_name || ''
+                          });
+                          setOpenEditDialog(true);
+                          setError('');
+                        }}>
+                          <EditIcon />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete">
+                        <IconButton size="small" onClick={() => {
+                          setSelectedTeacher(teacher);
+                          setOpenDeleteDialog(true);
+                          setError('');
+                        }}>
+                          <DeleteIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Paper>
+
+      {/* Add Teacher Dialog */}
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
+        <DialogTitle>Add New Teacher</DialogTitle>
+        <form onSubmit={handleSubmit}>
+          <DialogContent>
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {error}
+              </Alert>
+            )}
+            
+            <Grid container spacing={2}>
+              {/* Account Information */}
+              <Grid item xs={12}>
+                <Typography variant="h6" gutterBottom>
+                  Account Information
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Username"
+                  name="username"
+                  value={formData.username}
+                  onChange={handleInputChange}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Email"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="First Name"
+                  name="first_name"
+                  value={formData.first_name}
+                  onChange={handleInputChange}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Last Name"
+                  name="last_name"
+                  value={formData.last_name}
+                  onChange={handleInputChange}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Password"
+                  name="password"
+                  type="password"
+                  value={formData.password}
+                  onChange={handleInputChange}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Confirm Password"
+                  name="password_confirm"
+                  type="password"
+                  value={formData.password_confirm}
+                  onChange={handleInputChange}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Phone"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                />
+              </Grid>
+
+              {/* Professional Information */}
+              <Grid item xs={12} sx={{ mt: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Professional Information
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Joining Date"
+                  name="joining_date"
+                  type="date"
+                  value={formData.joining_date}
+                  onChange={handleInputChange}
+                  InputLabelProps={{ shrink: true }}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth required>
+                  <InputLabel>Qualification</InputLabel>
+                  <Select
+                    name="qualification"
+                    value={formData.qualification}
+                    onChange={handleInputChange}
+                    label="Qualification"
+                  >
+                    {qualifications.map((qual) => (
+                      <MenuItem key={qual} value={qual}>{qual}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth required>
+                  <InputLabel>Department</InputLabel>
+                  <Select
+                    name="department"
+                    value={formData.department}
+                    onChange={handleInputChange}
+                    label="Department"
+                  >
+                    {departments.map((dept) => (
+                      <MenuItem key={dept} value={dept}>{dept}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Designation"
+                  name="designation"
+                  value={formData.designation}
+                  onChange={handleInputChange}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Experience (Years)"
+                  name="experience_years"
+                  type="number"
+                  value={formData.experience_years}
+                  onChange={handleInputChange}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Salary"
+                  name="salary"
+                  type="number"
+                  value={formData.salary}
+                  onChange={handleInputChange}
+                />
+              </Grid>
+
+              {/* Emergency Contact */}
+              <Grid item xs={12} sx={{ mt: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Emergency Contact
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Emergency Contact Name"
+                  name="emergency_contact_name"
+                  value={formData.emergency_contact_name}
+                  onChange={handleInputChange}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Emergency Contact Number"
+                  name="emergency_contact"
+                  value={formData.emergency_contact}
+                  onChange={handleInputChange}
+                />
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseDialog}>Cancel</Button>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={loading}
+            >
+              {loading ? <CircularProgress size={24} /> : 'Create Teacher'}
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      {/* Edit Teacher Dialog */}
+      <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Edit Teacher</DialogTitle>
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          if (!selectedTeacher) return;
+          setLoading(true);
+          const updates = {
+            // Only teacher model fields
+            joining_date: formData.joining_date,
+            qualification: formData.qualification,
+            department: formData.department,
+            designation: formData.designation,
+            experience_years: formData.experience_years,
+            salary: formData.salary,
+            emergency_contact: formData.emergency_contact,
+            emergency_contact_name: formData.emergency_contact_name,
+          };
+          
+          // Include username and password if provided
+          if (formData.username) {
+            updates.username = formData.username;
+          }
+          if (formData.password) {
+            updates.password = formData.password;
+          }
+          
+          updateTeacherMutation.mutate({ id: selectedTeacher.id, updates });
+          setLoading(false);
+        }}>
+          <DialogContent>
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {error}
+              </Alert>
+            )}
+            <Grid container spacing={2}>
+              {/* User Credentials Section */}
+              <Grid item xs={12}>
+                <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                  User Credentials
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Username"
+                  name="username"
+                  value={formData.username}
+                  onChange={handleInputChange}
+                  helperText="Leave blank to keep current username"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="New Password"
+                  name="password"
+                  type="password"
+                  value={formData.password}
+                  onChange={handleInputChange}
+                  helperText="Leave blank to keep current password"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Confirm Password"
+                  name="password_confirm"
+                  type="password"
+                  value={formData.password_confirm}
+                  onChange={handleInputChange}
+                  helperText="Leave blank to keep current password"
+                />
+              </Grid>
+              
+              {/* Teacher Information Section */}
+              <Grid item xs={12}>
+                <Typography variant="h6" sx={{ fontWeight: 600, mt: 2, mb: 1 }}>
+                  Teacher Information
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth label="Joining Date" name="joining_date" type="date" value={formData.joining_date} onChange={handleInputChange} InputLabelProps={{ shrink: true }} required />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth required>
+                  <InputLabel>Qualification</InputLabel>
+                  <Select name="qualification" value={formData.qualification} label="Qualification" onChange={handleInputChange}>
+                    {qualifications.map((q) => (<MenuItem key={q} value={q}>{q}</MenuItem>))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth required>
+                  <InputLabel>Department</InputLabel>
+                  <Select name="department" value={formData.department} label="Department" onChange={handleInputChange}>
+                    {departments.map((d) => (<MenuItem key={d} value={d}>{d}</MenuItem>))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth label="Designation" name="designation" value={formData.designation} onChange={handleInputChange} required />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth type="number" label="Experience (Years)" name="experience_years" value={formData.experience_years} onChange={handleInputChange} required />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth type="number" label="Salary" name="salary" value={formData.salary} onChange={handleInputChange} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth label="Emergency Contact Name" name="emergency_contact_name" value={formData.emergency_contact_name} onChange={handleInputChange} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth label="Emergency Contact Number" name="emergency_contact" value={formData.emergency_contact} onChange={handleInputChange} />
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenEditDialog(false)}>Cancel</Button>
+            <Button type="submit" variant="contained" disabled={loading}>{loading ? <CircularProgress size={24} /> : 'Save Changes'}</Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      {/* QR Modal */}
+      <Dialog open={openQRDialog} onClose={() => { setOpenQRDialog(false); setQrData(null); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Teacher QR Code</DialogTitle>
+        <DialogContent>
+          {selectedTeacher && (
+            <Box>
+              <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                {selectedTeacher.user_details?.first_name} {selectedTeacher.user_details?.last_name}
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 3, alignItems: 'center', mb: 2 }}>
+                {(qrData?.qr_code_url || selectedTeacher?.qr_code) ? (
+                  <img
+                    alt="QR Code"
+                    style={{ width: 160, height: 160 }}
+                    src={qrData?.qr_code_url || (selectedTeacher.qr_code ? `${axios.defaults.baseURL.replace('/api','')}${selectedTeacher.qr_code}` : '')}
+                  />
+                ) : (
+                  <Typography color="text.secondary">No QR image available</Typography>
+                )}
+                <Box>
+                  <Typography variant="body2">Employee ID: {selectedTeacher.employee_id}</Typography>
+                  <Typography variant="body2">Department: {selectedTeacher.department}</Typography>
+                  <Typography variant="body2">Designation: {selectedTeacher.designation}</Typography>
+                </Box>
+              </Box>
+              {/* Display domain-specific info */}
+              {qrData && (
+                <Box sx={{ mt: 1 }}>
+                  {Array.isArray(qrData.borrowed_books) && qrData.borrowed_books.length > 0 ? (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2">Borrowed Books</Typography>
+                      {qrData.borrowed_books.map((b, i) => (
+                        <Typography key={i} variant="body2">{b.title} — Issued: {b.issued_date || 'N/A'} — Status: {b.status}</Typography>
+                      ))}
+                    </Box>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">No borrowed books.</Typography>
+                  )}
+
+                  <Box sx={{ mt: 1 }}>
+                    <Typography variant="subtitle2">Attendance</Typography>
+                    <Typography variant="body2">Sessions Created: {qrData.attendance_sessions_count ?? 0}</Typography>
+                    <Typography variant="body2">Attendance Marked: {qrData.marked_attendances_count ?? 0}</Typography>
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setOpenQRDialog(false); setQrData(null); }}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirm Dialog */}
+      <Dialog open={openDeleteDialog} onClose={() => setOpenDeleteDialog(false)}>
+        <DialogTitle>Delete Teacher</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to delete this teacher?</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenDeleteDialog(false)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={() => {
+            if (selectedTeacher) deleteTeacherMutation.mutate(selectedTeacher.id);
+          }}>Delete</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
+
+export default TeacherManagement;

@@ -1,0 +1,278 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+.landing-root {
+  min-height: 100vh;
+  background: #f8fafc;
+  position: relative;
+  overflow: hidden;
+}
+
+.landing-root::before,
+.landing-root::after {
+  content: none;
+}
+
+.landing-root::before {
+  background: radial-gradient(circle, rgba(14, 116, 144, 0.6) 0%, rgba(14, 116, 144, 0) 70%);
+  top: -160px;
+  right: -120px;
+}
+
+.landing-root::after {
+  background: radial-gradient(circle, rgba(251, 146, 60, 0.5) 0%, rgba(251, 146, 60, 0) 70%);
+  bottom: -180px;
+  left: -140px;
+}
+
+.landing-shell {
+  position: relative;
+  z-index: 1;
+  padding: 48px clamp(16px, 4vw, 64px) 96px;
+  font-family: 'Space Grotesk', sans-serif;
+  color: #0f172a;
+}
+
+.landing-shell .MuiTypography-root,
+.landing-shell .MuiButton-root,
+.landing-shell .MuiChip-root {
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+.landing-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.landing-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.landing-mark {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: #1e40af;
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+.landing-title {
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+}
+
+.landing-subtitle {
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.landing-header-actions {
+  flex-wrap: wrap;
+}
+
+.landing-link {
+  color: #1e40af;
+  font-weight: 600;
+}
+
+.landing-cta {
+  background: #1e40af !important;
+  color: #fff !important;
+  border-radius: 999px !important;
+  padding: 10px 26px !important;
+  box-shadow: 0 12px 24px rgba(30, 64, 175, 0.25);
+}
+
+.landing-outline {
+  border-radius: 999px !important;
+  border: 1px solid rgba(30, 64, 175, 0.45) !important;
+  color: #1e40af !important;
+}
+
+.landing-hero {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 48px;
+  margin-top: 64px;
+  align-items: center;
+}
+
+.landing-hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.landing-chip {
+  align-self: flex-start;
+  background: rgba(30, 64, 175, 0.12) !important;
+  color: #1e40af !important;
+  font-weight: 600;
+}
+
+.landing-headline {
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+  line-height: 1.05;
+  font-size: clamp(2.2rem, 4vw, 3.8rem);
+}
+
+.landing-accent {
+  color: #1e40af;
+  margin-left: 6px;
+}
+
+.landing-body {
+  font-size: 1.1rem;
+  color: rgba(15, 23, 42, 0.72);
+  max-width: 560px;
+}
+
+.landing-hero-actions {
+  flex-wrap: wrap;
+}
+
+.landing-metrics {
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.landing-metric-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.landing-metric-label {
+  color: rgba(15, 23, 42, 0.6);
+  font-size: 0.92rem;
+}
+
+.landing-divider {
+  border-color: rgba(15, 23, 42, 0.15);
+}
+
+.landing-hero-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.landing-card {
+  padding: 22px;
+  border-radius: 16px !important;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.landing-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.landing-card-primary {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+.landing-card-secondary {
+  background: #1e40af;
+  color: #fff;
+}
+
+.landing-card-secondary .MuiChip-root {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+}
+
+.landing-card-tertiary {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+
+.landing-card-text {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.landing-card-badges {
+  flex-wrap: wrap;
+}
+
+.landing-features {
+  margin-top: 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.landing-section-title {
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+}
+
+.landing-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+}
+
+.landing-feature {
+  padding: 22px;
+  border-radius: 16px !important;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.06);
+}
+
+.landing-feature-text {
+  color: rgba(15, 23, 42, 0.7);
+}
+
+.landing-cta-panel {
+  margin-top: 72px;
+  padding: 32px;
+  border-radius: 24px;
+  background: #1e293b;
+  color: #fff;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 20px 36px rgba(15, 23, 42, 0.2);
+}
+
+.landing-cta-panel .landing-body {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+@media (max-width: 900px) {
+  .landing-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .landing-cta-panel {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

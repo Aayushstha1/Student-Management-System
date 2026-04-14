@@ -1,0 +1,145 @@
+from django.db import models
+from django.contrib.auth import get_user_model
+from django.conf import settings
+from students.models import Student
+from teachers.models import Teacher
+
+User = get_user_model()
+
+
+class Subject(models.Model):
+    """
+    Subject model for managing subjects
+    """
+    name = models.CharField(max_length=100, unique=True)
+    code = models.CharField(max_length=20, unique=True)
+    description = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.code} - {self.name}"
+    
+    class Meta:
+        ordering = ['name']
+
+
+class AttendanceSession(models.Model):
+    """
+    A session for taking attendance for a class/section/period on a specific date and subject.
+    """
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='sessions')
+    date = models.DateField()
+    period = models.PositiveIntegerField(default=1)
+    class_name = models.CharField(max_length=100)
+    section = models.CharField(max_length=50)
+    teacher = models.ForeignKey(Teacher, on_delete=models.SET_NULL, null=True, blank=True, related_name='attendance_sessions')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_attendance_sessions')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.subject.name} {self.class_name}-{self.section} P{self.period} {self.date}"
+
+    class Meta:
+        unique_together = ['subject', 'date', 'period', 'class_name', 'section']
+        ordering = ['-date', 'subject__name', 'period']
+
+
+class Attendance(models.Model):
+    """
+    Attendance model for tracking student attendance
+    """
+    ATTENDANCE_STATUS = [
+        ('present', 'Present'),
+        ('absent', 'Absent'),
+        ('late', 'Late'),
+        ('excused', 'Excused'),
+    ]
+    
+    session = models.ForeignKey('AttendanceSession', on_delete=models.CASCADE, related_name='attendances', null=True, blank=True)
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='attendances')
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='attendances')
+    teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, related_name='marked_attendances')
+    date = models.DateField()
+    status = models.CharField(max_length=10, choices=ATTENDANCE_STATUS, default='absent')
+    remarks = models.TextField(blank=True, null=True)
+    marked_at = models.DateTimeField(auto_now_add=True)
+    marked_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='marked_attendances')
+    
+    def __str__(self):
+        return f"{self.student.student_id} - {self.subject.name} - {self.date} - {self.status}"
+    
+    class Meta:
+        unique_together = ['student', 'subject', 'date']
+        ordering = ['-date', 'student__student_id']
+        verbose_name = 'Attendance'
+        verbose_name_plural = 'Attendance Records'
+
+
+class AttendanceReport(models.Model):
+    """
+    Model for generating attendance reports
+    """
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='attendance_reports')
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='attendance_reports')
+    month = models.PositiveIntegerField()  # 1-12
+    year = models.PositiveIntegerField()
+    total_days = models.PositiveIntegerField(default=0)
+    present_days = models.PositiveIntegerField(default=0)
+    absent_days = models.PositiveIntegerField(default=0)
+    late_days = models.PositiveIntegerField(default=0)
+    excused_days = models.PositiveIntegerField(default=0)
+    attendance_percentage = models.FloatField(default=0.0)
+    generated_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.student.student_id} - {self.subject.name} - {self.month}/{self.year} - {self.attendance_percentage}%"
+    
+    def calculate_percentage(self):
+        if self.total_days > 0:
+            present_count = self.present_days + self.late_days
+            self.attendance_percentage = (present_count / self.total_days) * 100
+        else:
+            self.attendance_percentage = 0.0
+    
+    def save(self, *args, **kwargs):
+        self.calculate_percentage()
+        super().save(*args, **kwargs)
+    
+    class Meta:
+        unique_together = ['student', 'subject', 'month', 'year']
+        ordering = ['-year', '-month', 'student__student_id']
+        verbose_name = 'Attendance Report'
+        verbose_name_plural = 'Attendance Reports'
+
+
+class LeaveRequest(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='leave_requests')
+    start_date = models.DateField()
+    end_date = models.DateField()
+    reason = models.TextField()
+    attachment = models.FileField(upload_to='leave_letters/', blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='approved_leave_requests'
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.student.student_id} leave {self.start_date} to {self.end_date}"

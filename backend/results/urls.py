@@ -1,0 +1,20 @@
+from django.urls import path
+from . import views
+
+app_name = 'results'
+
+urlpatterns = [
+    path('academic-years/', views.AcademicYearListCreateView.as_view(), name='academic-year-list-create'),
+    path('academic-years/<int:pk>/', views.AcademicYearDetailView.as_view(), name='academic-year-detail'),
+    path('semesters/', views.SemesterListCreateView.as_view(), name='semester-list-create'),
+    path('semesters/<int:pk>/', views.SemesterDetailView.as_view(), name='semester-detail'),
+    path('exams/', views.ExamListCreateView.as_view(), name='exam-list-create'),
+    path('exams/<int:pk>/', views.ExamDetailView.as_view(), name='exam-detail'),
+    path('topic-analytics/', views.TopicAnalyticsView.as_view(), name='topic-analytics'),
+    path('class-subjects/', views.ClassSubjectAssignmentListCreateView.as_view(), name='class-subjects'),
+    path('class-subjects/<int:pk>/', views.ClassSubjectAssignmentDetailView.as_view(), name='class-subjects-detail'),
+    path('', views.ResultListCreateView.as_view(), name='result-list-create'),
+    path('<int:pk>/', views.ResultDetailView.as_view(), name='result-detail'),
+    path('publish/', views.PublishResultsView.as_view(), name='publish-results'),
+    path('approve/', views.ApproveResultsView.as_view(), name='approve-results'),
+]
