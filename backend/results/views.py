@@ -12,6 +12,7 @@ from .serializers import (
     ResultSerializer,
     ClassSubjectAssignmentSerializer,
 )
+from .conflicts import collect_exam_conflicts
 from .utils import normalize_class_section
 from django.db.models import Q
 import re
@@ -327,6 +328,32 @@ class TopicAnalyticsView(generics.GenericAPIView):
         return Response(results, status=status.HTTP_200_OK)
 
 
+class ExamConflictView(generics.GenericAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        if getattr(request.user, 'role', None) not in ['admin', 'teacher']:
+            return Response({'detail': 'Only admin or teacher can view exam conflicts.'}, status=status.HTTP_403_FORBIDDEN)
+
+        conflicts = collect_exam_conflicts()
+        class_name = (request.query_params.get('class_name') or '').strip().lower()
+        section = (request.query_params.get('section') or '').strip().lower()
+
+        if class_name or section:
+            filtered = []
+            for conflict in conflicts:
+                entries = conflict.get('entries') or []
+                if any(
+                    (not class_name or str(entry.get('class_name') or '').strip().lower() == class_name)
+                    and (not section or str(entry.get('section') or '').strip().lower() == section)
+                    for entry in entries
+                ):
+                    filtered.append(conflict)
+            conflicts = filtered
+
+        return Response({'count': len(conflicts), 'results': conflicts}, status=status.HTTP_200_OK)
+
+
 class ClassSubjectAssignmentListCreateView(generics.ListCreateAPIView):
     serializer_class = ClassSubjectAssignmentSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -442,4 +469,3 @@ class ClassSubjectAssignmentDetailView(generics.RetrieveUpdateDestroyAPIView):
         if getattr(self.request.user, 'role', None) != 'admin':
             raise PermissionDenied('Only administrators can delete class subject assignments.')
         instance.delete()
-

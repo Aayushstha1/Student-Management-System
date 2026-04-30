@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 
 from parents.utils import get_student_for_user
+from .conflicts import collect_schedule_conflicts
 from .models import ClassSchedule, LessonPlan
 from .serializers import ClassScheduleSerializer, LessonPlanSerializer
 
@@ -52,6 +53,32 @@ class ClassScheduleDetailView(generics.RetrieveUpdateDestroyAPIView):
         if getattr(request.user, 'role', None) != 'admin':
             return Response({'detail': 'Only admin can delete schedules.'}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, *args, **kwargs)
+
+
+class ClassScheduleConflictView(generics.GenericAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        if getattr(request.user, 'role', None) not in ['admin', 'teacher']:
+            return Response({'detail': 'Only admin or teacher can view timetable conflicts.'}, status=status.HTTP_403_FORBIDDEN)
+
+        conflicts = collect_schedule_conflicts()
+        class_name = (request.query_params.get('class_name') or '').strip().lower()
+        section = (request.query_params.get('section') or '').strip().lower()
+
+        if class_name or section:
+            filtered = []
+            for conflict in conflicts:
+                entries = conflict.get('entries') or []
+                if any(
+                    (not class_name or str(entry.get('class_name') or '').strip().lower() == class_name)
+                    and (not section or str(entry.get('section') or '').strip().lower() == section)
+                    for entry in entries
+                ):
+                    filtered.append(conflict)
+            conflicts = filtered
+
+        return Response({'count': len(conflicts), 'results': conflicts}, status=status.HTTP_200_OK)
 
 
 class LessonPlanListCreateView(generics.ListCreateAPIView):

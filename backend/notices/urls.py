@@ -13,4 +13,6 @@ urlpatterns = [
     path('notifications/', views.NotificationListView.as_view(), name='user-notifications-list'),
     path('notifications/mark-read/', views.NotificationMarkReadView.as_view(), name='user-notifications-mark-read'),
     path('notifications/unread-count/', views.NotificationUnreadCountView.as_view(), name='user-notifications-unread-count'),
+    path('notifications/stream/', views.NotificationStreamView.as_view(), name='user-notifications-stream'),
+    path('analytics/', views.NoticeAnalyticsView.as_view(), name='notice-analytics'),
 ]

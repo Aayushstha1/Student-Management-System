@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+import socket
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -35,6 +36,33 @@ def _load_env(path):
 _load_env(BASE_DIR / '.env')
 
 
+def _extend_with_local_hosts(hosts):
+    local_hosts = {'localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]', 'testserver'}
+
+    for resolver in (socket.gethostname, socket.getfqdn):
+        try:
+            value = resolver()
+        except OSError:
+            value = ''
+        if value:
+            local_hosts.add(value)
+
+    for value in tuple(local_hosts):
+        lookup_value = value[1:-1] if value.startswith('[') and value.endswith(']') else value
+        try:
+            for _, _, _, _, sockaddr in socket.getaddrinfo(lookup_value, None):
+                address = sockaddr[0]
+                if not address:
+                    continue
+                local_hosts.add(address)
+                if ':' in address:
+                    local_hosts.add(f'[{address}]')
+        except OSError:
+            continue
+
+    return list(dict.fromkeys([*hosts, *sorted(local_hosts)]))
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
@@ -45,6 +73,20 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-$um0#nsh!_6hqxv#qjfx-9rnhd
 DEBUG = os.getenv('DEBUG', 'true').lower() in ['1', 'true', 'yes']
 
 ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', '').split(',') if h.strip()]
+ALLOW_LOCAL_HOSTS = os.getenv('ALLOW_LOCAL_HOSTS', 'true').lower() in ['1', 'true', 'yes']
+ALLOW_ALL_HOSTS_IN_DEBUG = os.getenv('ALLOW_ALL_HOSTS_IN_DEBUG', 'true').lower() in ['1', 'true', 'yes']
+
+# Support the machine's own hostname and LAN/local IPs by default so the app
+# can be opened from a phone or another browser on the same network without
+# tripping Django host validation.
+if ALLOW_LOCAL_HOSTS:
+    ALLOWED_HOSTS = _extend_with_local_hosts(ALLOWED_HOSTS)
+
+# Keep development flexible without weakening production defaults.
+if DEBUG and ALLOW_ALL_HOSTS_IN_DEBUG:
+    ALLOWED_HOSTS = ['*']
+elif not ALLOWED_HOSTS:
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]']
 
 
 # Application definition
@@ -171,7 +213,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'DEFAULT_PAGINATION_CLASS': 'backend.pagination.RelativePageNumberPagination',
     'PAGE_SIZE': 20,
 }
 

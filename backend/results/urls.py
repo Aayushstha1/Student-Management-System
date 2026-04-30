@@ -10,6 +10,7 @@ urlpatterns = [
     path('semesters/<int:pk>/', views.SemesterDetailView.as_view(), name='semester-detail'),
     path('exams/', views.ExamListCreateView.as_view(), name='exam-list-create'),
     path('exams/<int:pk>/', views.ExamDetailView.as_view(), name='exam-detail'),
+    path('exam-conflicts/', views.ExamConflictView.as_view(), name='exam-conflicts'),
     path('topic-analytics/', views.TopicAnalyticsView.as_view(), name='topic-analytics'),
     path('class-subjects/', views.ClassSubjectAssignmentListCreateView.as_view(), name='class-subjects'),
     path('class-subjects/<int:pk>/', views.ClassSubjectAssignmentDetailView.as_view(), name='class-subjects-detail'),

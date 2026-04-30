@@ -1,11 +1,17 @@
+import json
+import time
 from datetime import timedelta
 
+from django.db import close_old_connections
+from django.http import StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from .models import NoticeCategory, Notice, NoticeRead, UserNotification
 from .serializers import NoticeCategorySerializer, NoticeSerializer, NoticeReadSerializer, UserNotificationSerializer
+from .analytics import build_notice_analytics
 from events.models import CalendarEvent
 
 
@@ -72,7 +78,7 @@ class NoticeListCreateView(generics.ListCreateAPIView):
             elif audience == 'teachers':
                 users = User.objects.filter(is_active=True, role='teacher')
             elif audience == 'staff':
-                users = User.objects.filter(is_active=True, role='staff')
+                users = User.objects.filter(is_active=True, role__in=['admin', 'librarian', 'hostel_warden'])
             elif audience == 'parents':
                 users = User.objects.filter(is_active=True, role='parent')
             else:
@@ -149,3 +155,51 @@ class NotificationUnreadCountView(generics.GenericAPIView):
         ensure_tomorrow_holiday_notification(request.user)
         unread = UserNotification.objects.filter(user=request.user, is_read=False).count()
         return Response({"unread": unread}, status=status.HTTP_200_OK)
+
+
+class NotificationStreamView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        ensure_tomorrow_holiday_notification(request.user)
+        try:
+            last_seen_id = int(request.query_params.get('after_id') or 0)
+        except (TypeError, ValueError):
+            last_seen_id = 0
+
+        user = request.user
+
+        def event_stream():
+            last_id = last_seen_id
+            started_at = time.monotonic()
+
+            while time.monotonic() - started_at < 45:
+                close_old_connections()
+                notifications = list(
+                    UserNotification.objects.filter(user=user, id__gt=last_id).order_by('id')[:20]
+                )
+
+                if notifications:
+                    serializer = UserNotificationSerializer(notifications, many=True, context={'request': request})
+                    for payload in serializer.data:
+                        last_id = max(last_id, payload['id'])
+                        yield f"event: notification\ndata: {json.dumps(payload)}\n\n"
+
+                unread = UserNotification.objects.filter(user=user, is_read=False).count()
+                heartbeat = {'unread': unread, 'last_id': last_id}
+                yield f"event: heartbeat\ndata: {json.dumps(heartbeat)}\n\n"
+                time.sleep(3)
+
+        response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'
+        return response
+
+
+class NoticeAnalyticsView(generics.GenericAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        if getattr(request.user, 'role', None) != 'admin':
+            return Response({'detail': 'Only administrators can view notice analytics.'}, status=status.HTTP_403_FORBIDDEN)
+        return Response(build_notice_analytics(), status=status.HTTP_200_OK)

@@ -19,4 +19,6 @@ urlpatterns = [
     
     # Dashboard
     path('dashboard-stats/', views.dashboard_stats_view, name='dashboard-stats'),
+    path('admin-overview/', views.admin_overview_view, name='admin-overview'),
+    path('admin-assistant/', views.admin_assistant_view, name='admin-assistant'),
 ]

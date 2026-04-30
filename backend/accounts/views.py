@@ -8,6 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from .models import User
+from .dashboard_utils import build_admin_assistant_response, build_admin_overview
 from .serializers import UserSerializer, UserCreateSerializer, LoginSerializer, PasswordChangeSerializer
 
 
@@ -189,3 +190,20 @@ def dashboard_stats_view(request):
         }
     
     return Response(stats)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def admin_overview_view(request):
+    if getattr(request.user, 'role', None) != 'admin':
+        return Response({'detail': 'Only administrators can view this dashboard.'}, status=status.HTTP_403_FORBIDDEN)
+    return Response(build_admin_overview())
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def admin_assistant_view(request):
+    if getattr(request.user, 'role', None) != 'admin':
+        return Response({'detail': 'Only administrators can use the assistant.'}, status=status.HTTP_403_FORBIDDEN)
+    query = (request.data or {}).get('query', '')
+    return Response(build_admin_assistant_response(query=query), status=status.HTTP_200_OK)

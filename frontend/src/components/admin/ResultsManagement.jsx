@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import {
   Box,
@@ -28,7 +28,6 @@ import {
 import {
   CheckCircle as ApproveIcon,
   Cancel as RejectIcon,
-  Visibility as ViewIcon,
   MenuBook as SubjectsIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -50,11 +49,41 @@ function TabPanel(props) {
   );
 }
 
+const groupResultsByStatus = (results, status) => {
+  const filtered = results.filter((result) => result.status === status);
+  const grouped = {};
+
+  filtered.forEach((result) => {
+    const examId = result.exam || 'unknown';
+    const studentClass = result.student_class || 'unknown';
+    const studentSection = result.student_section || '';
+    const key = `${examId}-${studentClass}-${studentSection}`;
+
+    if (!grouped[key]) {
+      grouped[key] = {
+        examId,
+        examName: result.exam_name || `Exam ${examId}`,
+        class: studentClass,
+        section: studentSection,
+        results: [],
+        subjects: new Set(),
+        students: new Set(),
+        approvedBy: result.approved_by_name || 'Admin',
+        approvedAt: result.approved_at,
+      };
+    }
+
+    grouped[key].results.push(result);
+    grouped[key].subjects.add(result.subject_name || result.subject || 'Unknown');
+    grouped[key].students.add(result.student_name || result.student || 'Unknown');
+  });
+
+  return Object.values(grouped);
+};
+
 const ResultsManagement = () => {
   const queryClient = useQueryClient();
   const [tabValue, setTabValue] = useState(0);
-  const [selectedExam, setSelectedExam] = useState('');
-  const [selectedClass, setSelectedClass] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
   const [dialogMode, setDialogMode] = useState(''); // 'approve' or 'reject'
   const [selectedClassResults, setSelectedClassResults] = useState(null);
@@ -62,88 +91,37 @@ const ResultsManagement = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Fetch all pending results grouped by exam and class
-  const { data: groupedResults, isLoading } = useQuery({
-    queryKey: ['results-pending'],
+  const {
+    data: allResults = [],
+    isLoading,
+    isError: isResultsError,
+    error: resultsError,
+  } = useQuery({
+    queryKey: ['results'],
     queryFn: async () => {
       const response = await axios.get('results/');
-      const allResults = Array.isArray(response.data) ? response.data : (response.data?.results || []);
-      
-      // Filter pending results
-      const pending = allResults.filter((r) => r.status === 'pending_approval');
-      
-      // Group by exam and class+section
-      const grouped = {};
-      pending.forEach((result) => {
-        const examId = result.exam || 'unknown';
-        const studentClass = result.student_class || 'unknown';
-        const studentSection = result.student_section || '';
-        const key = `${examId}-${studentClass}-${studentSection}`;
-        
-        if (!grouped[key]) {
-          grouped[key] = {
-            examId,
-            examName: result.exam_name || `Exam ${examId}`,
-            class: studentClass,
-            section: studentSection,
-            results: [],
-            subjects: new Set(),
-            students: new Set(),
-          };
-        }
-        
-        grouped[key].results.push(result);
-        grouped[key].subjects.add(result.subject_name || result.subject || 'Unknown');
-        grouped[key].students.add(result.student_name || result.student || 'Unknown');
-      });
-
-      return Object.values(grouped);
+      return Array.isArray(response.data) ? response.data : (response.data?.results || []);
+    },
+    retry: (failureCount, fetchError) => {
+      const statusCode = fetchError?.response?.status;
+      if (statusCode && statusCode >= 400 && statusCode < 500 && statusCode !== 429) {
+        return false;
+      }
+      return failureCount < 2;
     },
   });
 
-  // Fetch approved results for display
-  const { data: approvedResults } = useQuery({
-    queryKey: ['results-approved'],
-    queryFn: async () => {
-      const response = await axios.get('results/');
-      const allResults = Array.isArray(response.data) ? response.data : (response.data?.results || []);
-      
-      // Filter approved results
-      const approved = allResults.filter((r) => r.status === 'approved');
-      
-      // Group by exam and class+section
-      const grouped = {};
-      approved.forEach((result) => {
-        const examId = result.exam || 'unknown';
-        const studentClass = result.student_class || 'unknown';
-        const studentSection = result.student_section || '';
-        const key = `${examId}-${studentClass}-${studentSection}`;
-        
-        if (!grouped[key]) {
-          grouped[key] = {
-            examId,
-            examName: result.exam_name || `Exam ${examId}`,
-            class: studentClass,
-            section: studentSection,
-            results: [],
-            subjects: new Set(),
-            students: new Set(),
-            approvedBy: result.approved_by_name || 'Admin',
-            approvedAt: result.approved_at,
-          };
-        }
-        
-        grouped[key].results.push(result);
-        grouped[key].subjects.add(result.subject_name || result.subject || 'Unknown');
-        grouped[key].students.add(result.student_name || result.student || 'Unknown');
-      });
-
-      return Object.values(grouped);
-    },
-  });
+  const pendingGroups = useMemo(
+    () => groupResultsByStatus(allResults, 'pending_approval'),
+    [allResults],
+  );
+  const approvedGroups = useMemo(
+    () => groupResultsByStatus(allResults, 'approved'),
+    [allResults],
+  );
 
   const approvalMutation = useMutation({
-    mutationFn: async ({ resultIds, action, remarks: approvalRemarks }) => {
+    mutationFn: async ({ action, remarks: approvalRemarks }) => {
       const payload = {
         exam: selectedClassResults.examId,
         class: selectedClassResults.class,
@@ -158,8 +136,7 @@ const ResultsManagement = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['results-pending']);
-      queryClient.invalidateQueries(['results-approved']);
+      queryClient.invalidateQueries({ queryKey: ['results'] });
       setOpenDialog(false);
       setRemarks('');
       setSuccess(`Results ${dialogMode === 'approve' ? 'approved' : 'rejected'} successfully!`);
@@ -210,8 +187,15 @@ const ResultsManagement = () => {
     );
   }
 
-  const pendingGroups = groupedResults || [];
-  const approvedGroups = approvedResults || [];
+  if (isResultsError) {
+    return (
+      <Box>
+        <Alert severity="error">
+          {resultsError?.response?.data?.detail || 'Failed to load results data.'}
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
     <Box>
