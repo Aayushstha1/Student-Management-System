@@ -1,5 +1,13 @@
 from django.contrib import admin
-from .models import Exam, Result, AcademicYear, Semester, ClassSubjectAssignment
+from .models import (
+    Exam,
+    Result,
+    AcademicYear,
+    Semester,
+    ClassSubjectAssignment,
+    ExamRoom,
+    ExamSeatAssignment,
+)
 
 
 @admin.register(AcademicYear)
@@ -71,3 +79,23 @@ class ClassSubjectAssignmentAdmin(admin.ModelAdmin):
     list_filter = ('class_name', 'section', 'is_active', 'subject')
     search_fields = ('class_name', 'section', 'subject__name', 'teacher__user__first_name', 'teacher__user__last_name')
 
+
+@admin.register(ExamRoom)
+class ExamRoomAdmin(admin.ModelAdmin):
+    list_display = ('name', 'building', 'rows', 'columns', 'capacity', 'is_active', 'created_at')
+    list_filter = ('is_active', 'building')
+    search_fields = ('name', 'building')
+
+
+@admin.register(ExamSeatAssignment)
+class ExamSeatAssignmentAdmin(admin.ModelAdmin):
+    list_display = ('exam', 'student', 'room', 'seat_label', 'seat_number', 'assigned_by', 'assigned_at')
+    list_filter = ('room', 'exam__exam_date', 'exam__class_name')
+    search_fields = (
+        'exam__name',
+        'student__student_id',
+        'student__user__first_name',
+        'student__user__last_name',
+        'room__name',
+        'seat_label',
+    )

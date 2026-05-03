@@ -57,6 +57,8 @@ const ExamRoutine = () => {
               <TableCell>Type</TableCell>
               <TableCell>Date</TableCell>
               <TableCell>Time</TableCell>
+              <TableCell>Room</TableCell>
+              <TableCell>Seat</TableCell>
               <TableCell align="right">Total</TableCell>
               <TableCell align="right">Pass</TableCell>
             </TableRow>
@@ -72,13 +74,15 @@ const ExamRoutine = () => {
                     ? `${exam.start_time || '--:--'} - ${exam.end_time || '--:--'}`
                     : '-'}
                 </TableCell>
+                <TableCell>{exam.my_seat_assignment?.room_name || '-'}</TableCell>
+                <TableCell>{exam.my_seat_assignment?.seat_label || '-'}</TableCell>
                 <TableCell align="right">{exam.total_marks}</TableCell>
                 <TableCell align="right">{exam.passing_marks}</TableCell>
               </TableRow>
             ))}
             {exams.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} align="center">No exams scheduled.</TableCell>
+                <TableCell colSpan={8} align="center">No exams scheduled.</TableCell>
               </TableRow>
             )}
           </TableBody>

@@ -1,21 +1,35 @@
-from rest_framework import generics, permissions, status
-from rest_framework.response import Response
+import re
+
+from django.db.models import Q
 from django.utils import timezone
+from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied
-from students.models import Student
+from rest_framework.response import Response
+
 from parents.utils import get_student_for_user
-from .models import AcademicYear, Semester, Exam, Result, ClassSubjectAssignment
+from students.models import Student
+
+from .models import (
+    AcademicYear,
+    Semester,
+    Exam,
+    Result,
+    ClassSubjectAssignment,
+    ExamRoom,
+    ExamSeatAssignment,
+)
 from .serializers import (
     AcademicYearSerializer,
     SemesterSerializer,
     ExamSerializer,
     ResultSerializer,
     ClassSubjectAssignmentSerializer,
+    ExamRoomSerializer,
+    ExamSeatAssignmentSerializer,
 )
 from .conflicts import collect_exam_conflicts
+from .seat_planning import generate_seat_plan
 from .utils import normalize_class_section
-from django.db.models import Q
-import re
 
 
 class AcademicYearListCreateView(generics.ListCreateAPIView):
@@ -43,12 +57,12 @@ class SemesterDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class ExamListCreateView(generics.ListCreateAPIView):
-    queryset = Exam.objects.all()
+    queryset = Exam.objects.select_related('subject').all()
     serializer_class = ExamSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = Exam.objects.all()
+        qs = Exam.objects.select_related('subject').all()
         class_name = self.request.query_params.get('class_name') or self.request.query_params.get('class')
         section = self.request.query_params.get('section')
 
@@ -74,6 +88,168 @@ class ExamDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Exam.objects.all()
     serializer_class = ExamSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+
+class ExamRoomListCreateView(generics.ListCreateAPIView):
+    serializer_class = ExamRoomSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = ExamRoom.objects.all()
+        is_active = self.request.query_params.get('is_active')
+        if is_active is not None:
+            queryset = queryset.filter(is_active=str(is_active).lower() in ['1', 'true', 'yes'])
+        return queryset
+
+    def perform_create(self, serializer):
+        if getattr(self.request.user, 'role', None) != 'admin':
+            raise PermissionDenied('Only administrators can create exam rooms.')
+        serializer.save()
+
+
+class ExamRoomDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = ExamRoom.objects.all()
+    serializer_class = ExamRoomSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_update(self, serializer):
+        if getattr(self.request.user, 'role', None) != 'admin':
+            raise PermissionDenied('Only administrators can update exam rooms.')
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if getattr(self.request.user, 'role', None) != 'admin':
+            raise PermissionDenied('Only administrators can delete exam rooms.')
+        instance.delete()
+
+
+class ExamSeatAssignmentListView(generics.ListAPIView):
+    serializer_class = ExamSeatAssignmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = ExamSeatAssignment.objects.select_related(
+            'exam',
+            'exam__subject',
+            'room',
+            'student__user',
+        ).all()
+        exam_id = self.request.query_params.get('exam')
+        room_id = self.request.query_params.get('room')
+        user = self.request.user
+        role = getattr(user, 'role', None)
+
+        if exam_id:
+            queryset = queryset.filter(exam_id=exam_id)
+        if room_id:
+            queryset = queryset.filter(room_id=room_id)
+
+        if role == 'admin':
+            return queryset
+
+        if role in ['student', 'parent']:
+            student = get_student_for_user(user)
+            if not student:
+                return ExamSeatAssignment.objects.none()
+            return queryset.filter(student=student)
+
+        if role == 'teacher' and hasattr(user, 'teacher_profile'):
+            assignments = ClassSubjectAssignment.objects.filter(
+                teacher=user.teacher_profile,
+                is_active=True,
+            ).values_list('class_name', 'section')
+            teacher_filter = Q()
+            has_teacher_filter = False
+            for class_name, section in assignments:
+                section_value = str(section or '').strip()
+                if section_value:
+                    teacher_filter |= (
+                        Q(exam__class_name__iexact=class_name, exam__section__iexact=section_value)
+                        | Q(exam__class_name__iexact=class_name, exam__section__exact='')
+                    )
+                else:
+                    teacher_filter |= Q(exam__class_name__iexact=class_name)
+                has_teacher_filter = True
+            return queryset.filter(teacher_filter) if has_teacher_filter else ExamSeatAssignment.objects.none()
+
+        return ExamSeatAssignment.objects.none()
+
+
+class GenerateSeatPlanView(generics.GenericAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        if getattr(request.user, 'role', None) != 'admin':
+            return Response({'detail': 'Only administrators can generate seat plans.'}, status=status.HTTP_403_FORBIDDEN)
+
+        exam_id = request.data.get('exam')
+        room_ids = request.data.get('room_ids') or []
+        distribution = (request.data.get('distribution') or 'balanced').strip()
+        pattern = (request.data.get('pattern') or 'row_wise').strip()
+        replace_existing = str(request.data.get('replace_existing', True)).lower() not in ['0', 'false', 'no']
+        allowed_distributions = ['balanced', 'room_fill']
+        allowed_patterns = ['row_wise', 'serpentine', 'checkerboard']
+
+        if not exam_id:
+            return Response({'detail': 'exam is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not room_ids:
+            return Response({'detail': 'Select at least one room.'}, status=status.HTTP_400_BAD_REQUEST)
+        if distribution not in allowed_distributions:
+            return Response({'detail': 'Invalid distribution mode.'}, status=status.HTTP_400_BAD_REQUEST)
+        if pattern not in allowed_patterns:
+            return Response({'detail': 'Invalid seat pattern.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            exam = Exam.objects.get(pk=exam_id)
+        except Exam.DoesNotExist:
+            return Response({'detail': 'Exam not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        rooms = list(ExamRoom.objects.filter(id__in=room_ids, is_active=True).order_by('name'))
+        if len(rooms) != len(set(str(room_id) for room_id in room_ids)):
+            return Response({'detail': 'One or more selected rooms are missing or inactive.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            assignments = generate_seat_plan(
+                exam=exam,
+                rooms=rooms,
+                distribution=distribution,
+                pattern=pattern,
+                assigned_by=request.user,
+                replace_existing=bool(replace_existing),
+            )
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = ExamSeatAssignmentSerializer(assignments, many=True)
+        return Response(
+            {
+                'detail': f'Seat plan generated for {len(assignments)} students.',
+                'count': len(assignments),
+                'results': serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ClearSeatPlanView(generics.GenericAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        if getattr(request.user, 'role', None) != 'admin':
+            return Response({'detail': 'Only administrators can clear seat plans.'}, status=status.HTTP_403_FORBIDDEN)
+
+        exam_id = request.data.get('exam')
+        if not exam_id:
+            return Response({'detail': 'exam is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        deleted_count, _ = ExamSeatAssignment.objects.filter(exam_id=exam_id).delete()
+        return Response(
+            {
+                'detail': 'Seat plan cleared successfully.',
+                'count': deleted_count,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class ResultListCreateView(generics.ListCreateAPIView):

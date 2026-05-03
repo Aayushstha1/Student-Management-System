@@ -127,6 +127,8 @@ const ExamRoutine = () => {
               <TableCell>Type</TableCell>
               <TableCell>Date</TableCell>
               <TableCell>Time</TableCell>
+              <TableCell>Seat Plan</TableCell>
+              <TableCell>Rooms</TableCell>
               <TableCell align="right">Total</TableCell>
               <TableCell align="right">Pass</TableCell>
             </TableRow>
@@ -144,13 +146,17 @@ const ExamRoutine = () => {
                     ? `${exam.start_time || '--:--'} - ${exam.end_time || '--:--'}`
                     : '-'}
                 </TableCell>
+                <TableCell>
+                  {`${exam.seat_plan_summary?.assigned_count || 0}/${exam.seat_plan_summary?.expected_count || 0}`}
+                </TableCell>
+                <TableCell>{(exam.seat_plan_summary?.room_names || []).join(', ') || '-'}</TableCell>
                 <TableCell align="right">{exam.total_marks}</TableCell>
                 <TableCell align="right">{exam.passing_marks}</TableCell>
               </TableRow>
             ))}
             {exams.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} align="center">No exams scheduled.</TableCell>
+                <TableCell colSpan={10} align="center">No exams scheduled.</TableCell>
               </TableRow>
             )}
           </TableBody>

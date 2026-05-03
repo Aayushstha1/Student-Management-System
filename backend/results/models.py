@@ -1,7 +1,9 @@
-from django.db import models
 from django.conf import settings
-from students.models import Student
+from django.core.exceptions import ValidationError
+from django.db import models
+
 from attendance.models import Subject
+from students.models import Student
 from teachers.models import Teacher
 
 
@@ -32,6 +34,15 @@ class Exam(models.Model):
     end_time = models.TimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def candidate_students(self):
+        queryset = Student.objects.filter(current_class=self.class_name, is_active=True)
+        if self.section:
+            queryset = queryset.filter(current_section=self.section)
+        return queryset.select_related('user')
+
+    def candidate_count(self):
+        return self.candidate_students().count()
     
     def __str__(self):
         class_part = f"{self.class_name}{(' ' + self.section) if self.section else ''}".strip()
@@ -179,3 +190,66 @@ class ClassSubjectAssignment(models.Model):
         unique_together = ['class_name', 'section', 'subject']
         ordering = ['class_name', 'section', 'subject__name']
 
+
+class ExamRoom(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    building = models.CharField(max_length=120, blank=True)
+    rows = models.PositiveIntegerField(default=5)
+    columns = models.PositiveIntegerField(default=6)
+    capacity = models.PositiveIntegerField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def grid_capacity(self):
+        return self.rows * self.columns
+
+    def clean(self):
+        if self.rows <= 0:
+            raise ValidationError({'rows': 'Rows must be greater than zero.'})
+        if self.columns <= 0:
+            raise ValidationError({'columns': 'Columns must be greater than zero.'})
+        if self.capacity <= 0:
+            raise ValidationError({'capacity': 'Capacity must be greater than zero.'})
+        if self.capacity > self.grid_capacity:
+            raise ValidationError({'capacity': 'Capacity cannot be greater than rows x columns.'})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        ordering = ['name']
+
+
+class ExamSeatAssignment(models.Model):
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE, related_name='seat_assignments')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='exam_seat_assignments')
+    room = models.ForeignKey(ExamRoom, on_delete=models.CASCADE, related_name='seat_assignments')
+    seat_number = models.PositiveIntegerField()
+    seat_label = models.CharField(max_length=20)
+    row_number = models.PositiveIntegerField()
+    column_number = models.PositiveIntegerField()
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='exam_seat_assignments',
+    )
+    assigned_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.exam.name} - {self.student.student_id} - {self.room.name} {self.seat_label}"
+
+    class Meta:
+        ordering = ['room__name', 'seat_number', 'student__student_id']
+        constraints = [
+            models.UniqueConstraint(fields=['exam', 'student'], name='unique_exam_student_seat_assignment'),
+            models.UniqueConstraint(fields=['exam', 'room', 'seat_number'], name='unique_exam_room_seat_number'),
+            models.UniqueConstraint(fields=['exam', 'room', 'seat_label'], name='unique_exam_room_seat_label'),
+            models.UniqueConstraint(fields=['exam', 'room', 'row_number', 'column_number'], name='unique_exam_room_position'),
+        ]
