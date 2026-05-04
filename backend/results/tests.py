@@ -1,6 +1,10 @@
 from datetime import date
+import os
+import shutil
+import tempfile
 
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from rest_framework.test import APITestCase
 
 from attendance.models import Subject
@@ -17,6 +21,21 @@ def normalize_api_list(data):
 
 
 class SeatPlanningApiTests(APITestCase):
+    @classmethod
+    def setUpClass(cls):
+        parent_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'test_media')
+        os.makedirs(parent_dir, exist_ok=True)
+        cls._temp_media_root = tempfile.mkdtemp(dir=parent_dir)
+        cls._override = override_settings(MEDIA_ROOT=cls._temp_media_root)
+        cls._override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._override.disable()
+        shutil.rmtree(cls._temp_media_root, ignore_errors=True)
+
     def setUp(self):
         self.admin = User.objects.create_user(
             username='admin-seat',

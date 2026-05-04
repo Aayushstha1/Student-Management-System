@@ -21,4 +21,6 @@ urlpatterns = [
     path('dashboard-stats/', views.dashboard_stats_view, name='dashboard-stats'),
     path('admin-overview/', views.admin_overview_view, name='admin-overview'),
     path('admin-assistant/', views.admin_assistant_view, name='admin-assistant'),
+    path('exam-day-command-center/', views.exam_day_command_center_view, name='exam-day-command-center'),
+    path('admin-intelligence/', views.admin_intelligence_view, name='admin-intelligence'),
 ]

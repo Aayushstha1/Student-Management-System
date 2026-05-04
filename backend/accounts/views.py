@@ -5,10 +5,16 @@ from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
+from django.utils.dateparse import parse_date
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from .models import User
-from .dashboard_utils import build_admin_assistant_response, build_admin_overview
+from .dashboard_utils import (
+    build_admin_assistant_response,
+    build_admin_overview,
+    build_exam_day_command_center,
+)
+from .intelligence import build_admin_intelligence_hub
 from .serializers import UserSerializer, UserCreateSerializer, LoginSerializer, PasswordChangeSerializer
 
 
@@ -207,3 +213,27 @@ def admin_assistant_view(request):
         return Response({'detail': 'Only administrators can use the assistant.'}, status=status.HTTP_403_FORBIDDEN)
     query = (request.data or {}).get('query', '')
     return Response(build_admin_assistant_response(query=query), status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def exam_day_command_center_view(request):
+    if getattr(request.user, 'role', None) != 'admin':
+        return Response({'detail': 'Only administrators can view the exam day command center.'}, status=status.HTTP_403_FORBIDDEN)
+
+    requested_date = (request.query_params.get('date') or '').strip()
+    parsed_date = None
+    if requested_date:
+        parsed_date = parse_date(requested_date)
+        if not parsed_date:
+            return Response({'detail': 'Invalid date format. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    return Response(build_exam_day_command_center(selected_date=parsed_date), status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def admin_intelligence_view(request):
+    if getattr(request.user, 'role', None) != 'admin':
+        return Response({'detail': 'Only administrators can view this dashboard.'}, status=status.HTTP_403_FORBIDDEN)
+    return Response(build_admin_intelligence_hub(), status=status.HTTP_200_OK)
